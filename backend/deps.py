@@ -30,3 +30,14 @@ def get_current_user(
     if not user or not user.activo:
         raise HTTPException(status_code=401, detail="Usuario no válido")
     return user
+
+def require_roles(*roles):
+    def dependency(user: Usuario = Depends(get_current_user)) -> Usuario:
+        if user.rol not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permisos para realizar esta acción",
+            )
+        return user
+
+    return dependency

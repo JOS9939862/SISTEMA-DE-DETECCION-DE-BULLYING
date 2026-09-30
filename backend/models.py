@@ -5,7 +5,7 @@ from sqlalchemy.orm import declarative_base, relationship
 
 # Si tu database.py ya define Base, borra esta línea y usa:
 # from database import Base
-Base = declarative_base()
+from database import Base
 
 
 def _ahora():

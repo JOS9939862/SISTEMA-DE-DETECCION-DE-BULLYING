@@ -8,3 +8,5 @@ anthropic
 bcrypt
 pyjwt
 openai
+pytest
+httpx

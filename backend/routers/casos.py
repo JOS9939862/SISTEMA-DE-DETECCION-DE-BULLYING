@@ -5,13 +5,17 @@ from datetime import timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from deps import get_current_user, get_db
+from deps import get_current_user, get_db, require_roles
 from models import Denuncia, Nota, Usuario
 from schemas import EstadoIn, NotaIn
 from services.ia_analisis import procesar_denuncia
 
 router = APIRouter(
-    prefix="/api/casos", tags=["casos"], dependencies=[Depends(get_current_user)]
+    prefix="/api/casos",
+    tags=["casos"], 
+    dependencies=[
+        Depends(require_roles("admin", "orientador", "psicologo"))
+        ],
 )
 
 ORDEN_SEVERIDAD = {"critica": 0, "alta": 1, "media": 2, "baja": 3}

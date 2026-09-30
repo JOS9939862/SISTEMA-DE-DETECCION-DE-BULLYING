@@ -15,8 +15,7 @@ from services.riesgo import detectar_riesgo_critico
 
 load_dotenv()
 
-# Crea las tablas que falten (para desarrollo; luego usa Alembic)
-Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(title="API Sistema Anti-Bullying")
 

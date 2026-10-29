@@ -1,4 +1,4 @@
-"""Crea un usuario del personal (admin u orientador).
+"""Crea un usuario del personal (admin, orientador o psicólogo).
 
 Uso, dentro de backend/ y con el entorno virtual activado:
     python crear_usuario.py
@@ -6,20 +6,23 @@ Uso, dentro de backend/ y con el entorno virtual activado:
 import getpass
 import sys
 
-from database import SessionLocal, engine
-from models import Base, Usuario
+from database import SessionLocal
+from migraciones import preparar_bd
+from models import Usuario
 from security import hash_password
+
+ROLES = ("admin", "orientador", "psicologo")
 
 
 def main():
-    Base.metadata.create_all(bind=engine)
+    preparar_bd()
 
     nombre = input("Nombre completo: ").strip()
     email = input("Correo: ").strip().lower()
-    rol = input("Rol (admin/orientador) [orientador]: ").strip() or "orientador"
+    rol = input("Rol (admin/orientador/psicologo) [orientador]: ").strip() or "orientador"
     if not nombre or "@" not in email:
         sys.exit("Nombre o correo inválido.")
-    if rol not in ("admin", "orientador"):
+    if rol not in ROLES:
         sys.exit("Rol inválido.")
 
     password = getpass.getpass("Contraseña (mínimo 8 caracteres): ")

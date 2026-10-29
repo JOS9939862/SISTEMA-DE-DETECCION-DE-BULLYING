@@ -1,10 +1,8 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 
-# Si tu database.py ya define Base, borra esta línea y usa:
-# from database import Base
 from database import Base
 
 
@@ -43,6 +41,9 @@ class Denuncia(Base):
     curso = Column(String(60), nullable=True)
 
     riesgo_critico = Column(Boolean, default=False, nullable=False)
+    # True si el personal revisó la alerta automática y la descartó como falsa.
+    # Desde ahí la detección por palabras clave no vuelve a activarla.
+    alerta_descartada = Column(Boolean, default=False, server_default="0", nullable=False)
     estado = Column(String(20), default="nuevo", nullable=False)
     creado_en = Column(DateTime, default=_ahora, nullable=False)
 

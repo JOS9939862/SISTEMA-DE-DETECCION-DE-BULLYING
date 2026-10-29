@@ -23,6 +23,7 @@ import {
 import {
   clearToken,
   getToken,
+  LIMITE_CASOS,
   listarCasos,
   obtenerEstadisticas,
   SesionError,
@@ -534,6 +535,16 @@ export default function PanelPage() {
                 ))}
               </select>
             </div>
+
+            {!cargando && casos.length >= LIMITE_CASOS && (
+              <div className="flex items-start gap-2 border-b border-amber-100 bg-amber-50 px-6 py-3 text-xs leading-5 text-amber-800">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                <p>
+                  Se muestran los {LIMITE_CASOS} casos más prioritarios. Hay más
+                  casos registrados: filtra por estado para ver el resto.
+                </p>
+              </div>
+            )}
 
             {cargando ? (
               <div className="flex min-h-[240px] items-center justify-center">

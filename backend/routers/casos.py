@@ -3,11 +3,13 @@ from collections import Counter
 from datetime import timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import case
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
+import config
 from deps import get_current_user, get_db, require_roles
-from models import Denuncia, Nota, Usuario
-from schemas import EstadoIn, NotaIn
+from models import AnalisisIA, Denuncia, Nota, Usuario
+from schemas import DescartarAlertaIn, EstadoIn, NotaIn
 from services.ia_analisis import procesar_denuncia
 
 router = APIRouter(
@@ -19,6 +21,7 @@ router = APIRouter(
 )
 
 ORDEN_SEVERIDAD = {"critica": 0, "alta": 1, "media": 2, "baja": 3}
+LIMITE_CASOS = 500
 
 
 def _iso(dt):
@@ -79,10 +82,13 @@ def _detalle(d: Denuncia):
         "creado_en": _iso(d.creado_en),
         "estado": d.estado,
         "riesgo_critico": d.riesgo_critico,
+        "alerta_descartada": d.alerta_descartada,
         "es_anonima": d.es_anonima,
         "lugar": d.lugar,
         "curso": d.curso,
         "texto": d.texto,
+        # Le indica al panel si vale la pena esperar un análisis con IA
+        "ia_activa": config.ia_configurada(),
         # La identidad solo existe si la persona decidió darla
         "denunciante_nombre": None if d.es_anonima else d.denunciante_nombre,
         "denunciante_contacto": None if d.es_anonima else d.denunciante_contacto,
@@ -108,26 +114,29 @@ def _obtener(db: Session, caso_id: int) -> Denuncia:
 
 @router.get("")
 def listar_casos(estado: str = None, db: Session = Depends(get_db)):
-    consulta = db.query(Denuncia)
+    consulta = (
+        db.query(Denuncia)
+        .outerjoin(Denuncia.analisis)
+        .options(contains_eager(Denuncia.analisis))
+    )
     if estado:
         consulta = consulta.filter(Denuncia.estado == estado)
-    casos = consulta.limit(500).all()
-
-    def prioridad(d: Denuncia):
-        sev = d.analisis.severidad if d.analisis else None
-        return (
-            not d.riesgo_critico,
-            ORDEN_SEVERIDAD.get(sev, 4),
-            -d.creado_en.timestamp(),
+    # Se ordena en SQL antes del límite: si se ordenara después, con más de
+    # 500 casos un caso crítico podría quedar fuera de la lista.
+    orden_sev = case(ORDEN_SEVERIDAD, value=AnalisisIA.severidad, else_=4)
+    casos = (
+        consulta.order_by(
+            Denuncia.riesgo_critico.desc(), orden_sev, Denuncia.creado_en.desc()
         )
-
-    casos.sort(key=prioridad)
+        .limit(LIMITE_CASOS)
+        .all()
+    )
     return [_resumen(d) for d in casos]
 
 
 @router.get("/estadisticas")
 def estadisticas(db: Session = Depends(get_db)):
-    casos = db.query(Denuncia).all()
+    casos = db.query(Denuncia).options(selectinload(Denuncia.analisis)).all()
     por_estado = Counter(d.estado for d in casos)
     por_sev = Counter(d.analisis.severidad for d in casos if d.analisis)
     por_tipo = Counter(t for d in casos if d.analisis for t in _json(d.analisis.tipos))
@@ -176,4 +185,33 @@ def reanalizar(caso_id: int, background_tasks: BackgroundTasks, db: Session = De
     (con un modelo local puede tardar minutos)."""
     d = _obtener(db, caso_id)
     background_tasks.add_task(procesar_denuncia, d.id)
+    return _detalle(d)
+
+@router.post("/{caso_id}/descartar-alerta")
+def descartar_alerta(
+    caso_id: int,
+    datos: DescartarAlertaIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """El personal descarta una alerta de riesgo crítico que resultó ser falsa
+    (p. ej. "mi mamá me va a matar si ve mi nota"). Queda registrado como nota,
+    con autor y motivo."""
+    d = _obtener(db, caso_id)
+    if not d.riesgo_critico:
+        raise HTTPException(status_code=409, detail="El caso no tiene una alerta de riesgo crítico activa")
+    d.riesgo_critico = False
+    d.alerta_descartada = True
+    db.add(
+        Nota(
+            denuncia_id=d.id,
+            autor_id=user.id,
+            texto=f"Alerta de riesgo crítico descartada. Motivo: {datos.motivo.strip()}",
+        )
+    )
+    db.commit()
+    # Se recalcula el análisis sin forzar la severidad "critica"
+    background_tasks.add_task(procesar_denuncia, d.id)
+    db.refresh(d)
     return _detalle(d)

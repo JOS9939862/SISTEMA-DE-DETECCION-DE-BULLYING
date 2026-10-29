@@ -1,10 +1,13 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DenunciaCreate(BaseModel):
+    # Se quitan los espacios antes de validar: "          " no es una denuncia
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     texto: str = Field(min_length=10, max_length=5000)
     es_anonima: bool = True
     lugar: Optional[str] = Field(default=None, max_length=120)
@@ -46,3 +49,7 @@ class EstadoIn(BaseModel):
 
 class NotaIn(BaseModel):
     texto: str = Field(min_length=1, max_length=3000)
+
+
+class DescartarAlertaIn(BaseModel):
+    motivo: str = Field(min_length=10, max_length=1000)

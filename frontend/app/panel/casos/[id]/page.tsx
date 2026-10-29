@@ -26,6 +26,7 @@ import {
 import {
   agregarNota,
   cambiarEstado,
+  descartarAlerta,
   getToken,
   obtenerCaso,
   reanalizarCaso,
@@ -158,6 +159,8 @@ export default function CasoPage() {
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [reanalizando, setReanalizando] = useState(false);
+  const [descartando, setDescartando] = useState(false);
+  const [motivo, setMotivo] = useState("");
 
   const activo = useRef(true);
 
@@ -206,12 +209,13 @@ export default function CasoPage() {
   }, [cargar, router]);
 
   /*
-   * Mientras no exista análisis IA o solamente exista el análisis
-   * de respaldo basado en reglas, consultamos periódicamente.
+   * Mientras no exista análisis, o solo exista el de respaldo y la IA
+   * esté activa (su resultado llegará después), consultamos periódicamente.
+   * Sin IA configurada el análisis por reglas es el definitivo.
    */
   const sinIA =
     caso !== null &&
-    (caso.analisis === null || caso.analisis.es_respaldo);
+    (caso.analisis === null || (caso.analisis.es_respaldo && caso.ia_activa));
 
   useEffect(() => {
     if (!sinIA) return;
@@ -256,7 +260,8 @@ export default function CasoPage() {
     }
   }
 
-  async function accion(fn: () => Promise<CasoDetalle>) {
+  /* Devuelve true si la operación se completó. */
+  async function accion(fn: () => Promise<CasoDetalle>): Promise<boolean> {
     setOcupado(true);
     setError("");
 
@@ -266,8 +271,11 @@ export default function CasoPage() {
       if (activo.current) {
         setCaso(resultado);
       }
+
+      return true;
     } catch (err) {
       manejarError(err);
+      return false;
     } finally {
       if (activo.current) {
         setOcupado(false);
@@ -447,7 +455,7 @@ export default function CasoPage() {
                 <AlertTriangle size={22} />
               </div>
 
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-bold text-rose-900">
                   Señal de riesgo crítico detectada
                 </h2>
@@ -458,9 +466,81 @@ export default function CasoPage() {
                   la valoración profesional ni determina por sí mismo una
                   situación clínica.
                 </p>
+
+                {!descartando ? (
+                  <button
+                    type="button"
+                    onClick={() => setDescartando(true)}
+                    className="mt-3 text-xs font-medium text-rose-700 underline underline-offset-2 hover:text-rose-900"
+                  >
+                    Revisé el caso y es una falsa alarma
+                  </button>
+                ) : (
+                  <form
+                    className="mt-4 max-w-2xl"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+
+                      if (await accion(() => descartarAlerta(id, motivo.trim()))) {
+                        setDescartando(false);
+                        setMotivo("");
+                      }
+                    }}
+                  >
+                    <label className="mb-2 block text-xs font-semibold text-rose-900">
+                      ¿Por qué no es una situación de riesgo? (queda registrado
+                      en las notas con tu nombre)
+                    </label>
+
+                    <textarea
+                      className="min-h-[80px] w-full resize-y rounded-xl border border-rose-200 bg-white p-3 text-sm text-slate-700 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-500/10"
+                      placeholder="Ej.: es una expresión coloquial; se conversó con el estudiante y no hay amenaza real."
+                      value={motivo}
+                      onChange={(e) => setMotivo(e.target.value)}
+                      maxLength={1000}
+                    />
+
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={ocupado || motivo.trim().length < 10}
+                        className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Descartar alerta
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDescartando(false);
+                          setMotivo("");
+                        }}
+                        className="text-sm text-rose-700 hover:text-rose-900"
+                      >
+                        Cancelar
+                      </button>
+
+                      <span className="text-[11px] text-rose-700/70">
+                        Mínimo 10 caracteres
+                      </span>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </section>
+        )}
+
+        {/* Alerta descartada por el personal */}
+        {!caso.riesgo_critico && caso.alerta_descartada && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
+            <Info className="mt-0.5 shrink-0 text-slate-400" size={18} />
+
+            <p>
+              La alerta automática de riesgo crítico fue revisada y descartada
+              por el personal. El motivo está registrado en las notas del caso.
+            </p>
+          </div>
         )}
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.8fr)]">
@@ -850,8 +930,10 @@ export default function CasoPage() {
 
                   if (!nota.trim()) return;
 
-                  await accion(() => agregarNota(id, nota));
-                  setNota("");
+                  // Si falla, se conserva el texto para no perder la nota
+                  if (await accion(() => agregarNota(id, nota))) {
+                    setNota("");
+                  }
                 }}
               >
                 <textarea

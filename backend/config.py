@@ -21,6 +21,9 @@ LLM_MODEL = os.getenv("LLM_MODEL", "")
 
 # Ajustes de velocidad (importantes con modelos locales lentos)
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "900"))  # tope de texto que genera el modelo
+# Segundos máximos de espera por respuesta. Un modelo local solo con CPU puede
+# tardar varios minutos (el análisis corre en segundo plano, nadie espera).
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "600"))
 RAG_K = int(os.getenv("RAG_K", "3"))  # fragmentos de la base de conocimiento que se envían
 RAG_MAX_CHARS = int(os.getenv("RAG_MAX_CHARS", "600"))  # largo máximo de cada fragmento
 

@@ -4,8 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'CLARO | Detección de bullying',
-  description: 'Interfaz para detectar señales de bullying y ciberbullying mediante FastAPI.',
-  generator: 'v0.app',
+  description: 'Plataforma para denunciar y dar seguimiento a casos de bullying y ciberbullying en el colegio.',
   icons: {
     icon: [
       {

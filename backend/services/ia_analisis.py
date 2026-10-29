@@ -38,6 +38,7 @@ IMPORTANTE:
 - Si existen señales críticas, la severidad DEBE ser "critica".
 - Usa exclusivamente los valores permitidos.
 - No inventes información que no aparezca en la denuncia o en el contexto.
+- No asumas el género de las personas: usa expresiones neutras como "la persona denunciante" o "el estudiante afectado o la estudiante afectada", salvo que el texto lo indique.
 - Si la información no es suficiente, utiliza "no_determinado".
 
 clasificacion DEBE ser exactamente uno de:
@@ -258,7 +259,7 @@ def _llamar_modelo(prompt: str) -> str:
 
         cliente = Anthropic(
             api_key=config.ANTHROPIC_API_KEY,
-            timeout=120.0,
+            timeout=config.LLM_TIMEOUT,
             max_retries=0,
         )
 
@@ -282,7 +283,7 @@ def _llamar_modelo(prompt: str) -> str:
     cliente = OpenAI(
         api_key=config.LLM_API_KEY or "ollama",
         base_url=config.LLM_BASE_URL,
-        timeout=180.0,
+        timeout=config.LLM_TIMEOUT,
         max_retries=0,
     )
 
@@ -315,10 +316,8 @@ def analizar_denuncia(texto: str, lugar=None, curso=None, riesgo_kw: bool = Fals
     )
     try:
         respuesta_modelo = _llamar_modelo(prompt)
-
-        print("\n======RESPUESTA DE LLAMA======")
-        print(respuesta_modelo)
-        print("======FIN DE RESPUESTA DE LLAMA======\n")
+        # No se registra el contenido: incluye datos sensibles de la denuncia
+        log.debug("Respuesta del modelo recibida (%d caracteres)", len(respuesta_modelo))
 
         raw = _extraer_json(respuesta_modelo)
 
@@ -369,7 +368,8 @@ def _guardar(db, d: Denuncia, r: dict) -> None:
     a.es_respaldo = r["es_respaldo"]
     a.creado_en = datetime.now(timezone.utc)
     db.add(a)
-    if r["riesgo_critico"]:
+    # Una alerta descartada por el personal no se reactiva automáticamente
+    if r["riesgo_critico"] and not d.alerta_descartada:
         d.riesgo_critico = True
         log.warning("ALERTA: denuncia %s con RIESGO CRÍTICO. Requiere atención inmediata.", d.id)
     db.commit()
@@ -378,20 +378,24 @@ def _guardar(db, d: Denuncia, r: dict) -> None:
 def procesar_denuncia(denuncia_id: int) -> None:
     """Analiza una denuncia en segundo plano.
 
-    1) Si aún no hay análisis, guarda al instante uno preliminar por reglas, para que
-       el caso ya aparezca priorizado en el panel aunque la IA sea lenta.
+    1) Si no hay análisis o solo hay uno por reglas, guarda al instante uno por
+       reglas, para que el caso ya aparezca priorizado en el panel aunque la IA
+       sea lenta.
     2) Luego consulta a la IA y, si responde bien, reemplaza el análisis. Si falla,
        se conserva el que ya existe (nunca se pisa un buen análisis con uno básico).
+
+    Si el personal descartó la alerta, las palabras clave ya no fuerzan la
+    severidad "critica"; la IA puede seguir marcándola con su propio criterio.
     """
     db = SessionLocal()
     try:
         d = db.get(Denuncia, denuncia_id)
         if not d:
             return
-        riesgo_kw = detectar_riesgo_critico(d.texto)
+        riesgo_kw = detectar_riesgo_critico(d.texto) and not d.alerta_descartada
         ia_lista = config.ia_configurada()
 
-        if d.analisis is None:
+        if d.analisis is None or d.analisis.es_respaldo:
             _guardar(db, d, analisis_basico(d.texto, riesgo_kw, preliminar=ia_lista))
 
         if ia_lista:

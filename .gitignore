@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Con "/" al inicio solo aplica a la raíz: "lib/" a secas ignoraba frontend/lib/
+/lib/
+/lib64/
 parts/
 sdist/
 var/

@@ -53,7 +53,16 @@ Denuncia ──► 1. Detector de riesgo crítico (palabras clave, instantáneo)
 Requisitos: Python 3.13, Node.js 20+, pnpm, MySQL y, opcionalmente, [Ollama](https://ollama.com)
 con el modelo `llama3.1`.
 
-### 1. Backend
+### 1. Base de datos
+
+Las tablas se crean solas, pero la base de datos hay que crearla una vez en MySQL. Su nombre
+debe coincidir con `DB_NAME` en el `.env`:
+
+```sql
+CREATE DATABASE bullying_db CHARACTER SET utf8mb4;
+```
+
+### 2. Backend
 
 ```bash
 cd backend
@@ -65,10 +74,10 @@ python crear_usuario.py        # crea el primer usuario del personal
 uvicorn main:app --reload
 ```
 
-Las tablas se crean solas al arrancar el servidor. La API queda en `http://localhost:8000`
-y su documentación interactiva en `http://localhost:8000/docs`.
+La API queda en `http://localhost:8000` y su documentación interactiva en
+`http://localhost:8000/docs`.
 
-### 2. Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -79,7 +88,19 @@ pnpm dev
 Abre `http://localhost:3000`. Si el backend está en otra dirección, defínela en
 `frontend/.env.local` con `NEXT_PUBLIC_API_URL=http://...`.
 
-### 3. Tests
+### 4. Inteligencia artificial (opcional)
+
+Sin IA configurada, el sistema sigue funcionando con el análisis por reglas. Para activarla,
+elige una opción en `backend/.env`:
+
+| Opción | Preparación | Variables |
+|---|---|---|
+| Ollama (local) | `ollama pull llama3.1` | `LLM_PROVIDER=openai`, `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=llama3.1` |
+| Claude | Clave de API de Anthropic | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=...` |
+
+Las demás variables y ajustes de velocidad están explicados en `backend/.env.example`.
+
+### 5. Tests
 
 ```bash
 cd backend
@@ -87,6 +108,37 @@ pytest
 ```
 
 Los tests usan una base SQLite en memoria, así que no necesitan MySQL ni IA.
+
+## Cuentas del personal
+
+No hay registro público: las cuentas se administran desde la terminal, dentro de `backend/` y
+con el entorno virtual activado.
+
+```bash
+python crear_usuario.py                            # crea un usuario (admin, orientador o psicologo)
+python cambiar_password.py correo@ejemplo.com      # pide una contraseña nueva
+python cambiar_password.py correo@ejemplo.com --generar   # genera una temporal
+```
+
+Las contraseñas se guardan cifradas y no se pueden recuperar, solo reemplazar.
+
+## API
+
+| Método | Ruta | Acceso | Descripción |
+|---|---|---|---|
+| POST | `/api/denuncias` | Público | Crea una denuncia y devuelve el código de seguimiento |
+| GET | `/api/seguimiento/{codigo}` | Público | Consulta el estado de un caso |
+| POST | `/api/auth/login` | Público | Inicia sesión |
+| GET | `/api/auth/me` | Sesión iniciada | Datos del usuario actual |
+| GET | `/api/casos` | Personal | Lista de casos por prioridad |
+| GET | `/api/casos/estadisticas` | Personal | Estadísticas del panel |
+| GET | `/api/casos/{id}` | Personal | Detalle de un caso |
+| PATCH | `/api/casos/{id}/estado` | Personal | Cambia el estado |
+| POST | `/api/casos/{id}/notas` | Personal | Agrega una nota profesional |
+| POST | `/api/casos/{id}/analizar` | Personal | Repite el análisis |
+| POST | `/api/casos/{id}/descartar-alerta` | Personal | Descarta una alerta de riesgo crítico |
+
+Los estados de un caso son `nuevo`, `en_revision`, `en_intervencion` y `cerrado`.
 
 ## Privacidad y seguridad
 
@@ -119,6 +171,8 @@ backend/
   services/            Detector de riesgo, análisis IA, búsqueda RAG
   knowledge/           Base de conocimiento para la IA
   migraciones.py       Crea tablas y columnas nuevas
+  crear_usuario.py     Crea un usuario del personal
+  cambiar_password.py  Cambia la contraseña de un usuario
   tests/               Tests automatizados (pytest)
 frontend/
   app/                 Páginas: inicio, denunciar, seguimiento, login, panel
